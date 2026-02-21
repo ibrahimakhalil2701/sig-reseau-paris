@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 DB_URL = "postgresql://sig_user:SigParis2024!@localhost:5432/reseau_eau_paris"
 
 # BBOX Paris intra-muros en WGS84 (lat_min, lon_min, lat_max, lon_max)
-BBOX_PARIS_WGS84 = "48.8155,2.2242,48.9022,2.4697"
+BBOX_PARIS_WGS84 = "2.2242,48.8155,2.4697,48.9022"
 
 WFS_BASE = "https://data.geopf.fr/wfs/ows"
 
 COUCHES_IGN = {
     "canalisation": {
-        "typename": "gpf-data-wfs:canalisation",
+        "typename": "BDTOPO_V3:canalisation",
         "table_dest": "aep_canalisation_ign",
         "description": "Canalisations BD TOPO Paris"
     }
@@ -38,7 +38,7 @@ def charger_wfs(typename: str, bbox: str) -> gpd.GeoDataFrame:
     url = (
         f"{WFS_BASE}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature"
         f"&TYPENAMES={typename}"
-        f"&BBOX={bbox}"
+        f"&BBOX={bbox},urn:ogc:def:crs:EPSG::4326"
         f"&outputFormat=application/json"
         f"&count=5000"
     )
@@ -51,7 +51,6 @@ def charger_wfs(typename: str, bbox: str) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(response.text)
     logger.info(f"Entites chargees : {len(gdf)}")
     return gdf
-
 
 def reprojeter_lambert93(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Reprojeter en Lambert-93 (EPSG:2154)."""
