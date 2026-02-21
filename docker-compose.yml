@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+
+  postgis:
+    image: postgis/postgis:15-3.4
+    container_name: sig_postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reseau_eau_paris
+      POSTGRES_USER: sig_user
+      POSTGRES_PASSWORD: SigParis2024!
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sig_user -d reseau_eau_paris"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sig_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: mbacke@sig.fr
+      PGADMIN_DEFAULT_PASSWORD: Admin2024!
+    ports:
+      - "5050:80"
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+volumes:
+  postgis_data:
