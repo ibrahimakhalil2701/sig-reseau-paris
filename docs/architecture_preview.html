@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeoConvert SaaS — Architecture Technique</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222536;
+    --border: #2e3250;
+    --accent: #4f8ef7;
+    --accent2: #7c3aed;
+    --green: #22c55e;
+    --orange: #f59e0b;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --muted: #7b849e;
+    --code-bg: #12151f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  /* ── HEADER ─────────────────────────────────────────────────────── */
+  header {
+    background: linear-gradient(135deg, #0f1117 0%, #1a1040 50%, #0f1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 40px 40px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(79,142,247,.15) 0%, transparent 70%);
+  }
+  header h1 {
+    font-size: 2.4rem; font-weight: 800; letter-spacing: -1px;
+    background: linear-gradient(90deg, #4f8ef7, #a78bfa, #4f8ef7);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p { color: var(--muted); margin-top: 10px; font-size: 1rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+  .tag {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 14px; font-size: .78rem;
+    color: var(--accent); font-weight: 500;
+  }
+
+  /* ── NAV ─────────────────────────────────────────────────────────── */
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    display: flex; gap: 0; overflow-x: auto;
+    position: sticky; top: 0; z-index: 100;
+  }
+  nav a {
+    color: var(--muted); text-decoration: none;
+    padding: 14px 18px; font-size: .85rem; font-weight: 500;
+    white-space: nowrap; border-bottom: 2px solid transparent;
+    transition: all .2s;
+  }
+  nav a:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ── LAYOUT ──────────────────────────────────────────────────────── */
+  main { max-width: 1100px; margin: 0 auto; padding: 48px 32px 80px; }
+  section { margin-bottom: 64px; }
+  h2 {
+    font-size: 1.5rem; font-weight: 700; color: var(--text);
+    padding-bottom: 12px; margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .num {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem; font-weight: 700; flex-shrink: 0;
+  }
+  h3 { font-size: 1.05rem; color: var(--accent); margin: 24px 0 12px; font-weight: 600; }
+
+  /* ── CARDS ───────────────────────────────────────────────────────── */
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px;
+    transition: border-color .2s, transform .2s;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card h4 { font-size: .95rem; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+  .card p, .card li { font-size: .85rem; color: var(--muted); }
+  .card ul { padding-left: 16px; }
+  .card .icon { font-size: 1.6rem; margin-bottom: 10px; }
+  .card.accent { border-color: var(--accent); background: rgba(79,142,247,.05); }
+  .card.green  { border-color: var(--green);  background: rgba(34,197,94,.05); }
+  .card.orange { border-color: var(--orange); background: rgba(245,158,11,.05); }
+  .card.purple { border-color: #a78bfa;       background: rgba(167,139,250,.05); }
+
+  /* ── TABLE ───────────────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--surface2); }
+  th { padding: 12px 16px; text-align: left; font-size: .82rem; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  td { padding: 12px 16px; font-size: .88rem; border-top: 1px solid var(--border); }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: .75rem; font-weight: 600;
+  }
+  .badge-blue   { background: rgba(79,142,247,.15);  color: #4f8ef7; }
+  .badge-green  { background: rgba(34,197,94,.15);   color: #22c55e; }
+  .badge-orange { background: rgba(245,158,11,.15);  color: #f59e0b; }
+  .badge-purple { background: rgba(167,139,250,.15); color: #a78bfa; }
+
+  /* ── CODE ────────────────────────────────────────────────────────── */
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; overflow-x: auto;
+    font-size: .82rem; line-height: 1.6; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: #a9b1d6;
+  }
+  code { color: #7dcfff; }
+
+  /* ── PIPELINE ────────────────────────────────────────────────────── */
+  .pipeline { display: flex; flex-direction: column; gap: 0; }
+  .pipe-step {
+    display: flex; align-items: flex-start; gap: 16px;
+    padding: 16px 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; margin-bottom: 4px;
+    position: relative;
+  }
+  .pipe-step::after {
+    content: '▼';
+    position: absolute; bottom: -18px; left: 50%;
+    transform: translateX(-50%);
+    color: var(--accent); font-size: .75rem; z-index: 1;
+  }
+  .pipe-step:last-child::after { display: none; }
+  .pipe-num {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem; font-weight: 700; flex-shrink: 0;
+  }
+  .pipe-content h4 { font-size: .9rem; font-weight: 600; margin-bottom: 4px; }
+  .pipe-content p  { font-size: .8rem; color: var(--muted); }
+  .pipe-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .pipe-tag {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 8px; font-size: .72rem; color: var(--muted);
+  }
+
+  /* ── PRICING ─────────────────────────────────────────────────────── */
+  .pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .plan {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px 20px; text-align: center;
+    transition: transform .2s;
+  }
+  .plan:hover { transform: translateY(-4px); }
+  .plan.featured { border-color: var(--accent); background: rgba(79,142,247,.07); }
+  .plan .plan-name { font-weight: 700; font-size: 1rem; margin-bottom: 6px; }
+  .plan .plan-price { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+  .plan .plan-period { font-size: .75rem; color: var(--muted); }
+  .plan .plan-conversions { font-size: .85rem; color: var(--green); margin: 10px 0; font-weight: 600; }
+  .plan ul { text-align: left; margin-top: 14px; padding-left: 0; list-style: none; }
+  .plan li { font-size: .8rem; color: var(--muted); padding: 3px 0; }
+  .plan li::before { content: '✓ '; color: var(--green); }
+
+  /* ── TIMELINE ────────────────────────────────────────────────────── */
+  .timeline { position: relative; padding-left: 32px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 10px; top: 0; bottom: 0;
+    width: 2px; background: var(--border);
+  }
+  .tl-item { position: relative; margin-bottom: 28px; }
+  .tl-dot {
+    position: absolute; left: -26px; top: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--bg);
+  }
+  .tl-label { font-size: .75rem; color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+  .tl-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+  .tl-items { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tl-chip {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; font-size: .78rem; color: var(--muted);
+  }
+
+  /* ── PROGRESS ────────────────────────────────────────────────────── */
+  .score-bar { margin: 6px 0 14px; }
+  .score-bar-label { display: flex; justify-content: space-between; font-size: .8rem;
+    color: var(--muted); margin-bottom: 4px; }
+  .score-track { height: 6px; background: var(--surface2); border-radius: 10px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 10px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+  /* ── DIAGRAM PLACEHOLDER ──────────────────────────────────────────── */
+  .mermaid-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; overflow-x: auto;
+  }
+  .mermaid { text-align: center; }
+
+  /* ── FOOTER ──────────────────────────────────────────────────────── */
+  footer {
+    text-align: center; color: var(--muted); font-size: .82rem;
+    padding: 32px; border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GeoConvert SaaS</h1>
+  <p>Architecture technique complète — Plateforme de conversion géospatiale intelligente</p>
+  <div class="tags">
+    <span class="tag">Python 3.12</span>
+    <span class="tag">FastAPI</span>
+    <span class="tag">GDAL 3.8</span>
+    <span class="tag">PostGIS 3.4</span>
+    <span class="tag">Celery</span>
+    <span class="tag">Redis</span>
+    <span class="tag">MinIO / S3</span>
+    <span class="tag">Docker</span>
+    <span class="tag">Shapely 2.x</span>
+    <span class="tag">GeoPandas</span>
+    <span class="tag">Stripe</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#architecture">Architecture</a>
+  <a href="#pipeline">Pipeline GDAL</a>
+  <a href="#securite">Sécurité</a>
+  <a href="#modele">Modèle éco.</a>
+  <a href="#mvp">MVP 30j</a>
+  <a href="#roadmap">Roadmap 6m</a>
+  <a href="#diff">Différenciation</a>
+  <a href="#start">Démarrage</a>
+</nav>
+
+<main>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 1. ARCHITECTURE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="architecture">
+  <h2><span class="num">1</span> Vue d'ensemble de l'architecture</h2>
+
+  <div class="mermaid-wrap">
+    <div class="mermaid">
+graph TD
+    U(["👤 Utilisateur\nNavigateur / API Client"])
+    CDN["☁️ Cloudflare CDN\nWAF + Rate Limiting"]
+    NX["🔀 Nginx\nReverse Proxy + SSL"]
+    API["⚡ FastAPI\n:8000 — 4 workers ASGI"]
+    FE["🖥 Frontend\nReact / Next.js :3000"]
+    FL["🌸 Flower\nMonitoring :5555"]
+    RD[("🔴 Redis\n:6379\nBroker Celery")]
+    W1["⚙️ Worker Celery #1\nGDAL · Shapely · GeoPandas"]
+    W2["⚙️ Worker Celery #2\nGDAL · Shapely · GeoPandas"]
+    BT["⏱ Celery Beat\nTâches planifiées"]
+    PG[("🐘 PostGIS\n:5432\nUsers · Jobs · Subscriptions")]
+    S3[("🗄 MinIO / S3\n:9000\nUploads · Outputs")]
+    SR["🔍 Sentry\nErreurs + Traces"]
+
+    U -->|HTTPS| CDN --> NX
+    NX --> API & FE
+    API --> RD
+    RD --> W1 & W2 & BT
+    API --> PG & S3
+    W1 & W2 --> PG & S3
+    API -.->|erreurs| SR
+    FL -.->|monitor| RD
+
+    style U fill:#1a1d27,stroke:#4f8ef7,color:#e2e8f0
+    style CDN fill:#1a1d27,stroke:#f59e0b,color:#e2e8f0
+    style NX fill:#1a1d27,stroke:#22c55e,color:#e2e8f0
+    style API fill:#1a1d27,stroke:#4f8ef7,color:#e2e8f0
+    style RD fill:#1a1d27,stroke:#ef4444,color:#e2e8f0
+    style PG fill:#1a1d27,stroke:#4f8ef7,color:#e2e8f0
+    style S3 fill:#1a1d27,stroke:#a78bfa,color:#e2e8f0
+    style W1 fill:#1a1d27,stroke:#22c55e,color:#e2e8f0
+    style W2 fill:#1a1d27,stroke:#22c55e,color:#e2e8f0
+    style BT fill:#1a1d27,stroke:#f59e0b,color:#e2e8f0
+    </div>
+  </div>
+
+  <h3>2.1 Stack Backend</h3>
+  <div class="grid grid-2" style="margin-top:16px">
+    <div class="card accent">
+      <div class="icon">⚡</div>
+      <h4>FastAPI 0.111 + Uvicorn</h4>
+      <ul>
+        <li>4 workers ASGI production-ready</li>
+        <li>OpenAPI / Swagger auto-généré</li>
+        <li>Pydantic v2 — validation stricte</li>
+        <li>SQLAlchemy 2.0 async</li>
+        <li>Alembic — migrations versionées</li>
+      </ul>
+    </div>
+    <div class="card purple">
+      <div class="icon">🔐</div>
+      <h4>Auth & Sécurité</h4>
+      <ul>
+        <li>JWT HS256 — access 60min / refresh 30j</li>
+        <li>bcrypt — hachage mots de passe</li>
+        <li>API Keys SHA-256 (jamais en clair)</li>
+        <li>Magic bytes anti-spoofing</li>
+        <li>CORS + headers sécurité</li>
+      </ul>
+    </div>
+    <div class="card green">
+      <div class="icon">⚙️</div>
+      <h4>Celery + Redis</h4>
+      <ul>
+        <li>2 queues : conversion / maintenance</li>
+        <li>Soft limit 600s, hard 630s</li>
+        <li>2 retries sur erreurs transitoires</li>
+        <li>max-tasks-per-child: 50 (fuites GDAL)</li>
+        <li>Celery Beat — cleanup 24h auto</li>
+      </ul>
+    </div>
+    <div class="card orange">
+      <div class="icon">🗄</div>
+      <h4>Stockage MinIO / S3</h4>
+      <ul>
+        <li>Strategy pattern : Local / S3 / MinIO</li>
+        <li>Uploads : rétention 48h</li>
+        <li>Outputs : rétention 24h</li>
+        <li>URL signées expires_in=3600s</li>
+        <li>Isolation par bucket uploads/outputs</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>2.2 Structure du projet</h3>
+  <pre><code>saas/backend/app/
+├── main.py                    # FastAPI + middlewares sécurité
+├── config.py                  # Settings centralisés (pydantic-settings)
+├── models/
+│   ├── user.py               # User · Subscription · ApiKey
+│   └── conversion.py         # ConversionJob + JobStatus enum
+├── api/v1/
+│   ├── auth.py               # /register · /login · /refresh · /me
+│   ├── upload.py             # POST /upload (multipart sécurisé)
+│   ├── convert.py            # POST /convert · GET /{id}/status · GET /
+│   └── download.py           # GET /download/{id} → URL signée
+├── services/
+│   ├── gdal_processor.py     # Orchestrateur pipeline 8 étapes
+│   ├── projection_detector.py # Détection EPSG en cascade
+│   ├── geometry_cleaner.py   # make_valid() + dédup (Shapely 2.x)
+│   ├── attribute_normalizer.py # snake_case · types · nulls
+│   └── quality_reporter.py   # Score 0-100 · 5 dimensions
+├── core/
+│   ├── database.py           # Engine async + session factory
+│   ├── security.py           # JWT · bcrypt · magic bytes
+│   ├── storage.py            # Abstraction Local/S3/MinIO
+│   └── celery_app.py         # Config queues prioritaires
+└── workers/
+    └── conversion_tasks.py   # Task Celery + retry + cleanup</code></pre>
+
+  <h3>2.3 Base de données PostgreSQL 15 + PostGIS 3.4</h3>
+  <div class="mermaid-wrap" style="margin-top:12px">
+    <div class="mermaid">
+erDiagram
+    users {
+        uuid id PK
+        string email
+        string hashed_password
+        string full_name
+        bool is_active
+        timestamp created_at
+    }
+    subscriptions {
+        uuid id PK
+        uuid user_id FK
+        enum plan
+        string stripe_customer_id
+        int conversions_used_this_month
+        timestamp current_period_end
+    }
+    api_keys {
+        uuid id PK
+        uuid user_id FK
+        string key_hash
+        string name
+        bool is_active
+    }
+    conversion_jobs {
+        uuid id PK
+        uuid user_id FK
+        string original_filename
+        string output_format
+        int detected_epsg
+        int target_epsg
+        enum status
+        jsonb quality_report
+        timestamp download_expires_at
+    }
+    usage_events {
+        bigint id PK
+        uuid user_id FK
+        string event_type
+        jsonb metadata
+        timestamp created_at
+    }
+
+    users ||--o| subscriptions : "a un"
+    users ||--o{ api_keys : "possède"
+    users ||--o{ conversion_jobs : "lance"
+    users ||--o{ usage_events : "génère"
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 2. PIPELINE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="pipeline">
+  <h2><span class="num">2</span> Pipeline de conversion GDAL</h2>
+
+  <div class="pipeline">
+    <div class="pipe-step">
+      <div class="pipe-num">1</div>
+      <div class="pipe-content">
+        <h4>Extraction ZIP</h4>
+        <p>Détecte automatiquement le format dans l'archive. Cherche .shp → .gpkg → .geojson → .kml par ordre de priorité.</p>
+        <div class="pipe-tags"><span class="pipe-tag">zipfile</span><span class="pipe-tag">pathlib</span></div>
+      </div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">2</div>
+      <div class="pipe-content">
+        <h4>Détection projection EPSG (cascade)</h4>
+        <p>OGR metadata (haute confiance) → fichier .prj (haute) → heuristique bbox géographique (moyenne). Retourne le niveau de confiance.</p>
+        <div class="pipe-tags"><span class="pipe-tag">GDAL/OGR</span><span class="pipe-tag">osr.SpatialReference</span><span class="pipe-tag">pyproj</span></div>
+      </div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">3</div>
+      <div class="pipe-content">
+        <h4>Nettoyage géométrique</h4>
+        <p>Suppression nulles → identify invalides (explain_validity) → make_valid() → suppression vides → déduplication. Statistiques complètes.</p>
+        <div class="pipe-tags"><span class="pipe-tag">shapely.make_valid</span><span class="pipe-tag">shapely.is_valid</span><span class="pipe-tag">geopandas</span></div>
+      </div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">4</div>
+      <div class="pipe-content">
+        <h4>Normalisation attributs</h4>
+        <p>snake_case ASCII → troncature DBF 10 chars → suppression colonnes fantômes → conversion types → nettoyage textes → standardisation nulls.</p>
+        <div class="pipe-tags"><span class="pipe-tag">pandas</span><span class="pipe-tag">unicodedata</span><span class="pipe-tag">re</span></div>
+      </div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">5</div>
+      <div class="pipe-content">
+        <h4>Reprojection EPSG</h4>
+        <p>Reprojection EPSG source → EPSG cible si demandé. Validation CRS avant et après transformation.</p>
+        <div class="pipe-tags"><span class="pipe-tag">gdf.to_crs()</span><span class="pipe-tag">pyproj.CRS</span></div>
+      </div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">6</div>
+      <div class="pipe-content">
+        <h4>Écriture format cible</h4>
+        <p>8 formats supportés via driver OGR. ZIP automatique pour Shapefile (multi-fichiers) et FileGDB.</p>
+        <div class="pipe-tags"><span class="pipe-tag">GeoJSON</span><span class="pipe-tag">Shapefile</span><span class="pipe-tag">GPKG</span><span class="pipe-tag">KML</span><span class="pipe-tag">DXF</span><span class="pipe-tag">CSV</span><span class="pipe-tag">FlatGeobuf</span></div>
+      </div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">7</div>
+      <div class="pipe-content">
+        <h4>Stockage MinIO + URL signée</h4>
+        <p>Upload du fichier converti dans le bucket outputs. Génération URL signée valable 1h. Expiration job 24h.</p>
+        <div class="pipe-tags"><span class="pipe-tag">boto3</span><span class="pipe-tag">generate_presigned_url</span></div>
+      </div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">8</div>
+      <div class="pipe-content">
+        <h4>Rapport qualité JSON</h4>
+        <p>Score global 0-100 sur 5 dimensions. Recommandations textuelles. Grade A–F. Persisté en JSONB PostgreSQL.</p>
+        <div class="pipe-tags"><span class="pipe-tag">Score géométrie 25pts</span><span class="pipe-tag">Validité 25pts</span><span class="pipe-tag">Complétude 20pts</span><span class="pipe-tag">Projection 15pts</span><span class="pipe-tag">Types 15pts</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Score qualité — 5 dimensions</h3>
+  <div class="card" style="margin-top:16px; max-width: 600px">
+    <div class="score-bar">
+      <div class="score-bar-label"><span>Complétude géométrique</span><span style="color:#4f8ef7">25 pts</span></div>
+      <div class="score-track"><div class="score-fill" style="width:100%"></div></div>
+    </div>
+    <div class="score-bar">
+      <div class="score-bar-label"><span>Validité géométrique</span><span style="color:#4f8ef7">25 pts</span></div>
+      <div class="score-track"><div class="score-fill" style="width:100%"></div></div>
+    </div>
+    <div class="score-bar">
+      <div class="score-bar-label"><span>Complétude attributaire</span><span style="color:#4f8ef7">20 pts</span></div>
+      <div class="score-track"><div class="score-fill" style="width:80%"></div></div>
+    </div>
+    <div class="score-bar">
+      <div class="score-bar-label"><span>Projection connue</span><span style="color:#4f8ef7">15 pts</span></div>
+      <div class="score-track"><div class="score-fill" style="width:60%"></div></div>
+    </div>
+    <div class="score-bar">
+      <div class="score-bar-label"><span>Qualité des types</span><span style="color:#4f8ef7">15 pts</span></div>
+      <div class="score-track"><div class="score-fill" style="width:60%"></div></div>
+    </div>
+    <p style="font-size:.8rem; color:var(--muted); margin-top:12px">Grade : A ≥ 90 · B ≥ 80 · C ≥ 70 · D ≥ 60 · F &lt; 60</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 3. SÉCURITÉ -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="securite">
+  <h2><span class="num">3</span> Sécurité</h2>
+  <div class="grid grid-3">
+    <div class="card">
+      <div class="icon">📤</div>
+      <h4>Upload sécurisé</h4>
+      <ul>
+        <li>Whitelist extensions</li>
+        <li>Magic bytes anti-spoofing</li>
+        <li>Nom sanitisé (uuid4)</li>
+        <li>Limite taille par plan</li>
+        <li>Isolation par utilisateur</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="icon">🔑</div>
+      <h4>Authentification</h4>
+      <ul>
+        <li>JWT HS256 access 60min</li>
+        <li>Refresh token 30 jours</li>
+        <li>bcrypt hachage password</li>
+        <li>API Keys préfixe gc_live_</li>
+        <li>SHA-256 stocké uniquement</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="icon">🛡</div>
+      <h4>Middlewares HTTP</h4>
+      <ul>
+        <li>X-Content-Type-Options</li>
+        <li>X-Frame-Options: DENY</li>
+        <li>X-XSS-Protection</li>
+        <li>CORS whitelist explicite</li>
+        <li>Rate limit Nginx 100/min</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Limites upload par plan</h3>
+  <div class="table-wrap" style="margin-top:12px">
+    <table>
+      <thead><tr><th>Plan</th><th>Taille max</th><th>Formats</th><th>Isolé</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-blue">Free</span></td><td>100 Mo</td><td>Tous</td><td>✓</td></tr>
+        <tr><td><span class="badge badge-green">Starter</span></td><td>100 Mo</td><td>Tous</td><td>✓</td></tr>
+        <tr><td><span class="badge badge-orange">Pro</span></td><td>2 Go</td><td>Tous + API</td><td>✓</td></tr>
+        <tr><td><span class="badge badge-purple">Enterprise</span></td><td>20 Go</td><td>Tous + API + SLA</td><td>✓</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 4. MODÈLE ÉCONOMIQUE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="modele">
+  <h2><span class="num">4</span> Modèle économique SaaS</h2>
+
+  <div class="pricing">
+    <div class="plan">
+      <div class="plan-name">Free</div>
+      <div class="plan-price">0€</div>
+      <div class="plan-period">pour toujours</div>
+      <div class="plan-conversions">5 conversions / mois</div>
+      <ul>
+        <li>Web UI uniquement</li>
+        <li>100 Mo max</li>
+        <li>Rapport avec watermark</li>
+        <li>Support communauté</li>
+      </ul>
+    </div>
+    <div class="plan">
+      <div class="plan-name">Starter</div>
+      <div class="plan-price">29€</div>
+      <div class="plan-period">/ mois</div>
+      <div class="plan-conversions">100 conversions / mois</div>
+      <ul>
+        <li>Web UI complète</li>
+        <li>100 Mo max</li>
+        <li>Rapport sans watermark</li>
+        <li>Historique 30 jours</li>
+        <li>Email support 48h</li>
+      </ul>
+    </div>
+    <div class="plan featured">
+      <div class="plan-name" style="color:var(--accent)">Pro ⭐</div>
+      <div class="plan-price">99€</div>
+      <div class="plan-period">/ mois</div>
+      <div class="plan-conversions">1 000 conversions / mois</div>
+      <ul>
+        <li>API REST + SDK Python</li>
+        <li>2 Go max par fichier</li>
+        <li>Webhooks</li>
+        <li>Batch upload ZIP</li>
+        <li>Email support 24h</li>
+      </ul>
+    </div>
+    <div class="plan">
+      <div class="plan-name">Enterprise</div>
+      <div class="plan-price" style="font-size:1.2rem">Sur devis</div>
+      <div class="plan-period">&nbsp;</div>
+      <div class="plan-conversions">Illimité</div>
+      <ul>
+        <li>On-premise Docker</li>
+        <li>20 Go max par fichier</li>
+        <li>SSO / SAML</li>
+        <li>SLA 99.9%</li>
+        <li>Support dédié</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Projections financières (conservatrice)</h3>
+  <div class="table-wrap" style="margin-top:12px">
+    <table>
+      <thead><tr><th>Mois</th><th>Free</th><th>Starter</th><th>Pro</th><th>Enterprise</th><th>MRR</th></tr></thead>
+      <tbody>
+        <tr><td>M3</td><td>500</td><td>20</td><td>5</td><td>0</td><td style="color:var(--green); font-weight:700">1 075€</td></tr>
+        <tr><td>M6</td><td>2 000</td><td>80</td><td>25</td><td>1</td><td style="color:var(--green); font-weight:700">5 395€</td></tr>
+        <tr><td>M12</td><td>8 000</td><td>300</td><td>100</td><td>5</td><td style="color:var(--green); font-weight:700">20 695€</td></tr>
+        <tr><td>M18</td><td>20 000</td><td>800</td><td>350</td><td>15</td><td style="color:var(--green); font-weight:700">62 150€</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Flux upgrade Stripe</h3>
+  <div class="mermaid-wrap" style="margin-top:12px">
+    <div class="mermaid">
+sequenceDiagram
+    participant U as Utilisateur
+    participant API as FastAPI
+    participant S as Stripe
+    participant W as Webhook Handler
+    participant DB as PostgreSQL
+
+    U->>API: POST /billing/checkout
+    API->>S: Créer Checkout Session
+    S-->>API: session_url
+    API-->>U: Redirect Stripe
+    U->>S: Paiement CB
+    S->>W: POST /billing/webhook (payment_succeeded)
+    W->>DB: UPDATE subscription SET plan='pro'
+    W->>U: Email confirmation (SendGrid)
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 5. MVP 30 JOURS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="mvp">
+  <h2><span class="num">5</span> MVP 30 jours</h2>
+
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-dot"></div>
+      <div class="tl-label">SEMAINE 1 — J1 à J7</div>
+      <div class="tl-title">Infrastructure de base</div>
+      <div class="tl-items">
+        <span class="tl-chip">Git + CI/CD GitHub Actions</span>
+        <span class="tl-chip">Docker Compose complet</span>
+        <span class="tl-chip">Schema PostgreSQL + Alembic</span>
+        <span class="tl-chip">Auth JWT /register /login</span>
+        <span class="tl-chip">Upload sécurisé + magic bytes</span>
+        <span class="tl-chip">Tests unitaires pytest</span>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot" style="background:var(--green)"></div>
+      <div class="tl-label">SEMAINE 2 — J8 à J14</div>
+      <div class="tl-title">Core géospatial</div>
+      <div class="tl-items">
+        <span class="tl-chip">GDALProcessor multi-formats</span>
+        <span class="tl-chip">ProjectionDetector cascade</span>
+        <span class="tl-chip">GeometryCleaner make_valid</span>
+        <span class="tl-chip">AttributeNormalizer</span>
+        <span class="tl-chip">GeoJSON ↔ SHP ↔ GPKG ↔ KML</span>
+        <span class="tl-chip">Tests intégration BDTopo / OSM</span>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot" style="background:var(--orange)"></div>
+      <div class="tl-label">SEMAINE 3 — J15 à J21</div>
+      <div class="tl-title">Async + Rapport qualité</div>
+      <div class="tl-items">
+        <span class="tl-chip">Celery workers + Redis</span>
+        <span class="tl-chip">POST /convert async</span>
+        <span class="tl-chip">Polling GET /{id}/status</span>
+        <span class="tl-chip">QualityReporter score 0-100</span>
+        <span class="tl-chip">Download URL signées MinIO</span>
+        <span class="tl-chip">Cleanup Celery Beat 24h</span>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-dot" style="background:#a78bfa"></div>
+      <div class="tl-label">SEMAINE 4 — J22 à J30</div>
+      <div class="tl-title">Monétisation + Deploy</div>
+      <div class="tl-items">
+        <span class="tl-chip">Stripe plans + webhook</span>
+        <span class="tl-chip">Système quotas mensuel</span>
+        <span class="tl-chip">Sentry + Flower monitoring</span>
+        <span class="tl-chip">Deploy VPS Hetzner CX21</span>
+        <span class="tl-chip">SSL Let's Encrypt Traefik</span>
+        <span class="tl-chip">Landing page Next.js / Astro</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card green" style="margin-top:28px; max-width:400px">
+    <h4>💰 Budget infrastructure MVP</h4>
+    <table style="width:100%; margin-top:10px">
+      <tr><td style="color:var(--muted); font-size:.85rem">VPS API (4 vCPU, 8GB)</td><td style="text-align:right; font-size:.85rem; color:var(--green)">20€/mois</td></tr>
+      <tr><td style="color:var(--muted); font-size:.85rem">VPS Worker (4 vCPU, 8GB)</td><td style="text-align:right; font-size:.85rem; color:var(--green)">20€/mois</td></tr>
+      <tr><td style="color:var(--muted); font-size:.85rem">Object Storage 100GB</td><td style="text-align:right; font-size:.85rem; color:var(--green)">5€/mois</td></tr>
+      <tr><td style="color:var(--muted); font-size:.85rem">Domaine + SSL</td><td style="text-align:right; font-size:.85rem; color:var(--green)">15€/an</td></tr>
+      <tr style="border-top:1px solid var(--border)"><td style="font-weight:700; font-size:.9rem">Total</td><td style="text-align:right; font-weight:700; color:var(--green)">~47€/mois</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 6. ROADMAP 6 MOIS -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="roadmap">
+  <h2><span class="num">6</span> Roadmap produit 6 mois</h2>
+  <div class="mermaid-wrap">
+    <div class="mermaid">
+gantt
+    title Roadmap GeoConvert SaaS
+    dateFormat YYYY-MM-DD
+    section MVP
+        Infrastructure base          :done,    a1, 2026-03-02, 7d
+        Core géospatial GDAL         :done,    a2, after a1,   7d
+        Async Celery + Rapport       :active,  a3, after a2,   7d
+        Monétisation + Deploy        :         a4, after a3,   7d
+    section M3 — API
+        SDK Python pip install       :         b1, 2026-04-01, 14d
+        Webhooks & API Keys          :         b2, after b1,   10d
+        Plan Pro launch              :         b3, after b2,   6d
+    section M4 — Perf
+        Batch upload ZIP             :         c1, 2026-05-01, 14d
+        Cache SHA-256 résultats      :         c2, after c1,   10d
+        DXF/DWG avancé               :         c3, after c2,   6d
+    section M5 — Analytics
+        Dashboard utilisateur        :         d1, 2026-06-01, 21d
+        Export rapport PDF           :         d2, after d1,   9d
+    section M6 — Entreprise
+        Plugin QGIS                  :         e1, 2026-07-01, 21d
+        SSO/SAML + On-premise        :         e2, after e1,   10d
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 7. DIFFÉRENCIATION -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="diff">
+  <h2><span class="num">7</span> Différenciation vs QGIS / FME</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Outil</th><th>Installation</th><th>API</th><th>Correction auto</th><th>Rapport qualité</th><th>Prix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#ef4444">QGIS</strong></td>
+          <td>❌ Desktop obligatoire</td>
+          <td>❌ Non</td>
+          <td>❌ Manuel</td>
+          <td>❌ Non</td>
+          <td>Gratuit</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#ef4444">FME</strong></td>
+          <td>❌ Desktop + licence</td>
+          <td>✓ Limité</td>
+          <td>✓ Partiel</td>
+          <td>✓ Basique</td>
+          <td>3 000–5 000€/an</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#f59e0b">ogr2ogr</strong></td>
+          <td>❌ CLI technique</td>
+          <td>❌ Non</td>
+          <td>❌ Manuel</td>
+          <td>❌ Non</td>
+          <td>Gratuit</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#f59e0b">MyGeodata</strong></td>
+          <td>✓ Web</td>
+          <td>✓ Partiel</td>
+          <td>❌ Non</td>
+          <td>✓ Basique</td>
+          <td>~20€/mois</td>
+        </tr>
+        <tr style="background: rgba(79,142,247,.07)">
+          <td><strong style="color:#4f8ef7">GeoConvert ✓</strong></td>
+          <td>✓ 100% Web + API</td>
+          <td>✓ REST complète</td>
+          <td>✓ Automatique</td>
+          <td>✓ Score 0-100</td>
+          <td>0–99€/mois</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Canaux d'acquisition</h3>
+  <div class="grid grid-2" style="margin-top:12px">
+    <div class="card">
+      <h4>SEO / Content</h4>
+      <p>"convertir shapefile geojson" · "reproject EPSG 2154 4326" · "fix invalid geometry" · "gdal python tutorial"</p>
+    </div>
+    <div class="card">
+      <h4>Communauté GIS</h4>
+      <p>OSGeo forums · GIS Stack Exchange · Reddit r/gis · Twitter/X géomatique · LinkedIn SIG France</p>
+    </div>
+    <div class="card">
+      <h4>Intégrations</h4>
+      <p>Plugin QGIS officiel (visibilité massive) · Plugin JOSM · Extension ArcGIS Online</p>
+    </div>
+    <div class="card">
+      <h4>Partenariats</h4>
+      <p>IGN · Collectivités territoriales · ESN SIG · Bureaux d'études géotechnique · Métropoles</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- 8. DÉMARRAGE RAPIDE -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="start">
+  <h2><span class="num">8</span> Démarrage rapide</h2>
+
+  <pre><code># 1. Lancer la stack complète
+cd saas/
+docker compose up -d
+
+# Services disponibles :
+# API Swagger  → http://localhost:8000/api/docs
+# Flower       → http://localhost:5555  (admin / FlowerPwd2024!)
+# MinIO        → http://localhost:9001  (minio_admin / MinioPass2024!)
+# pgAdmin      → docker compose --profile dev up pgadmin
+
+# 2. Inscription
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"Test1234!","full_name":"Test User"}'
+
+# → Retourne { "access_token": "...", "refresh_token": "..." }
+export TOKEN="&lt;votre_access_token&gt;"
+
+# 3. Upload d'un fichier
+curl -X POST http://localhost:8000/api/v1/upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@mon_fichier.geojson"
+
+# → Retourne { "storage_path": "...", "upload_id": "..." }
+
+# 4. Lancer une conversion GeoJSON → GPKG + reprojection Lambert-93
+curl -X POST http://localhost:8000/api/v1/convert \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_path": "/tmp/geoconvert/uploads/abc123_mon_fichier.geojson",
+    "original_filename": "mon_fichier.geojson",
+    "output_format": "GPKG",
+    "target_epsg": 2154,
+    "fix_geometries": true,
+    "normalize_attributes": true
+  }'
+
+# → Retourne { "job_id": "uuid", "status": "pending" }
+
+# 5. Polling statut
+curl http://localhost:8000/api/v1/convert/$JOB_ID/status \
+  -H "Authorization: Bearer $TOKEN"
+
+# → { "status": "success", "quality_score": 87, "download_url": "...", ... }</code></pre>
+</section>
+
+</main>
+
+<footer>
+  Architecture conçue par <strong>Ibrahima Khalil Mbacke</strong> — Mars 2026 &nbsp;·&nbsp;
+  Stack : Python · FastAPI · GDAL · PostGIS · Celery · Redis · MinIO · Docker
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#1a1d27',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#4f8ef7',
+      lineColor: '#4f8ef7',
+      secondaryColor: '#222536',
+      tertiaryColor: '#12151f',
+      background: '#0f1117',
+      mainBkg: '#1a1d27',
+      nodeBorder: '#2e3250',
+      clusterBkg: '#1a1d27',
+      titleColor: '#e2e8f0',
+      edgeLabelBackground: '#1a1d27',
+      fontSize: '14px'
+    },
+    flowchart: { curve: 'basis', padding: 20 },
+    er: { layoutDirection: 'LR' },
+    sequence: { actorFontSize: 13, messageFontSize: 12 }
+  });
+</script>
+</body>
+</html>
