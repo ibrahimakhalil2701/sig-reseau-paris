@@ -1,0 +1,211 @@
+version: '3.9'
+
+# =============================================================================
+# GeoConvert SaaS — Stack complète
+# Services : API, Worker Celery, Redis, PostgreSQL/PostGIS, MinIO, Flower, Nginx
+# =============================================================================
+
+x-backend-common: &backend-common
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+    target: base
+  environment:
+    DATABASE_URL: postgresql+asyncpg://saas_user:SaasPwd2024!@postgis:5432/geoconvert
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/0
+    CELERY_RESULT_BACKEND: redis://redis:6379/1
+    STORAGE_BACKEND: minio
+    S3_ENDPOINT_URL: http://minio:9000
+    S3_BUCKET_UPLOADS: geoconvert-uploads
+    S3_BUCKET_OUTPUTS: geoconvert-outputs
+    AWS_ACCESS_KEY_ID: minio_admin
+    AWS_SECRET_ACCESS_KEY: MinioPass2024!
+    AWS_REGION: eu-west-3
+    SECRET_KEY: ${SECRET_KEY:-change_me_in_production_32_chars_min}
+    DEBUG: "false"
+    ENVIRONMENT: production
+  volumes:
+    - /tmp/geoconvert:/tmp/geoconvert
+  depends_on:
+    postgis:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+  networks:
+    - geoconvert-net
+
+
+services:
+
+  # ── API FastAPI ─────────────────────────────────────────────────────────────
+  api:
+    <<: *backend-common
+    container_name: geoconvert_api
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--workers", "4", "--log-level", "info"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.geoconvert.io`)"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+
+  # ── Worker Celery (conversion géospatiale) ───────────────────────────────────
+  worker:
+    <<: *backend-common
+    container_name: geoconvert_worker
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: worker
+    command: ["celery", "-A", "app.core.celery_app.celery_app", "worker",
+              "--loglevel=info", "--concurrency=2", "-Q", "conversion,maintenance",
+              "--max-tasks-per-child=50"]
+    deploy:
+      replicas: 2  # Scalable horizontalement
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
+
+  # ── Celery Beat (tâches planifiées) ─────────────────────────────────────────
+  beat:
+    <<: *backend-common
+    container_name: geoconvert_beat
+    command: ["celery", "-A", "app.core.celery_app.celery_app", "beat",
+              "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+
+  # ── Flower (dashboard monitoring Celery) ────────────────────────────────────
+  flower:
+    <<: *backend-common
+    container_name: geoconvert_flower
+    command: ["celery", "-A", "app.core.celery_app.celery_app", "flower",
+              "--port=5555", "--basic_auth=admin:FlowerPwd2024!"]
+    ports:
+      - "5555:5555"
+
+  # ── PostgreSQL + PostGIS ─────────────────────────────────────────────────────
+  postgis:
+    image: postgis/postgis:15-3.4
+    container_name: geoconvert_postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: geoconvert
+      POSTGRES_USER: saas_user
+      POSTGRES_PASSWORD: SaasPwd2024!
+      POSTGRES_MAX_CONNECTIONS: 200
+    ports:
+      - "5433:5432"     # Port différent pour ne pas confliter avec le projet principal
+    volumes:
+      - postgis_saas_data:/var/lib/postgresql/data
+      - ./database/saas_schema.sql:/docker-entrypoint-initdb.d/01_saas_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saas_user -d geoconvert"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - geoconvert-net
+    command: >
+      postgres
+        -c max_connections=200
+        -c shared_buffers=512MB
+        -c effective_cache_size=1536MB
+        -c maintenance_work_mem=128MB
+        -c work_mem=16MB
+        -c wal_buffers=16MB
+        -c checkpoint_completion_target=0.9
+
+  # ── Redis (broker Celery + cache) ────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: geoconvert_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - geoconvert-net
+
+  # ── MinIO (stockage S3-compatible) ───────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: geoconvert_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: MinioPass2024!
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - geoconvert-net
+
+  # ── MinIO Init (créer les buckets au démarrage) ───────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: geoconvert_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minio_admin MinioPass2024!;
+        mc mb --ignore-existing local/geoconvert-uploads;
+        mc mb --ignore-existing local/geoconvert-outputs;
+        mc anonymous set download local/geoconvert-outputs;
+        echo 'Buckets MinIO créés.';
+      "
+    networks:
+      - geoconvert-net
+
+  # ── pgAdmin (optionnel, dev/staging) ─────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: geoconvert_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@geoconvert.io
+      PGADMIN_DEFAULT_PASSWORD: Admin2024!
+    ports:
+      - "5051:80"
+    depends_on:
+      postgis:
+        condition: service_healthy
+    profiles:
+      - dev    # Seulement avec : docker compose --profile dev up
+    networks:
+      - geoconvert-net
+
+
+volumes:
+  postgis_saas_data:
+  redis_data:
+  minio_data:
+
+networks:
+  geoconvert-net:
+    driver: bridge
